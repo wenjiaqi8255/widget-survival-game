@@ -10,14 +10,12 @@ export default class BootScene extends Phaser.Scene {
     preload() {
         // 创建动态图形作为游戏资源
         this.createDynamicAssets();
-        // 加载游戏所需资源
-        // this.load.image('player', 'assets/player.png'); // 后续需创建此资源
-        // this.load.image('platform', 'assets/platform.png');
-        // this.load.image('collectible', 'assets/collectible.png');
-        // this.load.image('obstacle', 'assets/obstacle.png');
         
-        // 加载UI资源
-        // this.load.image('button', 'assets/button.png');
+        // 创建空音频键，以便稍后动态生成音效
+        this.createEmptySounds();
+        
+        // 加载游戏音效
+        this.loadSounds();
         
         // 创建加载进度条
         const progressBar = this.add.graphics();
@@ -41,6 +39,258 @@ export default class BootScene extends Phaser.Scene {
     create() {
         // 进入开始菜单场景
         this.scene.start('MenuScene');
+    }
+    
+    /**
+     * 在缓存中创建空的音效键，以便稍后动态生成
+     */
+    createEmptySounds() {
+        // 创建1秒长度的静音数据作为默认音效
+        const ctx = new AudioContext();
+        const sampleRate = ctx.sampleRate;
+        const buffer = ctx.createBuffer(1, sampleRate * 0.1, sampleRate);
+        const source = buffer.getChannelData(0);
+        
+        // 填充静音数据（全零）
+        for (let i = 0; i < source.length; i++) {
+            source[i] = 0;
+        }
+
+        // 将 AudioBuffer 转换为 ArrayBuffer
+        const wavBuffer = this.audioBufferToWav(buffer);
+        
+        // 创建 Blob 和 base64 数据
+        const blob = new Blob([wavBuffer], { type: 'audio/wav' });
+        const silentSoundURL = URL.createObjectURL(blob);
+        
+        // 预加载所有需要的音效键
+        this.load.audio('collect', silentSoundURL);
+        this.load.audio('powerup', silentSoundURL);
+        this.load.audio('hit', silentSoundURL);
+        this.load.audio('notification', silentSoundURL);
+        this.load.audio('levelUp', silentSoundURL);
+    }
+    
+    /**
+     * 将 AudioBuffer 转换为 WAV 格式的 ArrayBuffer
+     * @param {AudioBuffer} buffer - 音频缓冲区
+     * @returns {ArrayBuffer} - WAV 格式的数据
+     */
+    audioBufferToWav(buffer) {
+        const numOfChan = buffer.numberOfChannels;
+        const length = buffer.length * numOfChan * 2;
+        const sampleRate = buffer.sampleRate;
+        
+        const wav = new ArrayBuffer(44 + length);
+        const view = new DataView(wav);
+        
+        // RIFF标识符
+        this.writeString(view, 0, 'RIFF');
+        // RIFF区块大小
+        view.setUint32(4, 36 + length, true);
+        // RIFF类型
+        this.writeString(view, 8, 'WAVE');
+        // 格式标识符
+        this.writeString(view, 12, 'fmt ');
+        // 格式区块大小
+        view.setUint32(16, 16, true);
+        // 采样格式代码
+        view.setUint16(20, 1, true);
+        // 声道数
+        view.setUint16(22, numOfChan, true);
+        // 采样率
+        view.setUint32(24, sampleRate, true);
+        // 每秒字节数
+        view.setUint32(28, sampleRate * 2 * numOfChan, true);
+        // 每采样字节数
+        view.setUint16(32, numOfChan * 2, true);
+        // 每样本位数
+        view.setUint16(34, 16, true);
+        // 数据标识符
+        this.writeString(view, 36, 'data');
+        // 数据区块大小
+        view.setUint32(40, length, true);
+        
+        // 写入采样数据
+        const data = buffer.getChannelData(0);
+        let offset = 44;
+        for (let i = 0; i < data.length; i++) {
+            // 将浮点值转换为16位整数
+            const sample = Math.max(-1, Math.min(1, data[i]));
+            const value = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+            view.setInt16(offset, value, true);
+            offset += 2;
+        }
+        
+        return wav;
+    }
+    
+    /**
+     * 辅助函数：在DataView中写入字符串
+     */
+    writeString(view, offset, string) {
+        for (let i = 0; i < string.length; i++) {
+            view.setUint8(offset + i, string.charCodeAt(i));
+        }
+    }
+    
+    /**
+     * 加载游戏音效
+     * 使用Web Audio API在运行时生成音效
+     */
+    loadSounds() {
+        // 使用Phaser内置声音库生成简单音效
+        this.generateSounds();
+    }
+    
+    /**
+     * 生成基本音效
+     * 使用Web Audio API在运行时生成音效
+     */
+    generateSounds() {
+        // 收集物音效
+        this.generateCollectSound();
+        
+        // 能力提升音效
+        this.generatePowerupSound();
+        
+        // 碰撞音效
+        this.generateHitSound();
+        
+        // 通知声音
+        this.generateNotificationSound();
+        
+        // 升级音效
+        this.generateLevelUpSound();
+    }
+    
+    /**
+     * 生成收集物音效
+     */
+    generateCollectSound() {
+        const collect = this.sound.get('collect');
+        if (!collect) return;
+        
+        // 使用Web Audio API生成简单的收集音效
+        const context = this.sound.context;
+        const buffer = context.createBuffer(1, context.sampleRate * 0.3, context.sampleRate);
+        const data = buffer.getChannelData(0);
+        
+        // 生成上升音调的音效
+        for (let i = 0; i < buffer.length; i++) {
+            const t = i / buffer.length;
+            const frequency = 880 + 440 * t;
+            data[i] = Math.sin(i * frequency * Math.PI * 2 / context.sampleRate) * (1 - t);
+        }
+        
+        // 替换原始音效
+        collect.source.buffer = buffer;
+    }
+    
+    /**
+     * 生成能力提升音效
+     */
+    generatePowerupSound() {
+        const powerup = this.sound.get('powerup');
+        if (!powerup) return;
+        
+        // 使用Web Audio API生成能力提升音效
+        const context = this.sound.context;
+        const buffer = context.createBuffer(1, context.sampleRate * 0.5, context.sampleRate);
+        const data = buffer.getChannelData(0);
+        
+        // 生成能力提升音效
+        for (let i = 0; i < buffer.length; i++) {
+            const t = i / buffer.length;
+            const f1 = 220 + 880 * t;
+            const f2 = 330 + 660 * t;
+            data[i] = Math.sin(i * f1 * Math.PI * 2 / context.sampleRate) * 0.5 + 
+                      Math.sin(i * f2 * Math.PI * 2 / context.sampleRate) * 0.5 * (1 - t);
+        }
+        
+        // 替换原始音效
+        powerup.source.buffer = buffer;
+    }
+    
+    /**
+     * 生成碰撞音效
+     */
+    generateHitSound() {
+        const hit = this.sound.get('hit');
+        if (!hit) return;
+        
+        // 使用Web Audio API生成碰撞音效
+        const context = this.sound.context;
+        const buffer = context.createBuffer(1, context.sampleRate * 0.3, context.sampleRate);
+        const data = buffer.getChannelData(0);
+        
+        // 生成碰撞音效
+        for (let i = 0; i < buffer.length; i++) {
+            const t = i / buffer.length;
+            data[i] = Math.random() * 2 - 1;
+            data[i] *= (1 - t);
+        }
+        
+        // 替换原始音效
+        hit.source.buffer = buffer;
+    }
+    
+    /**
+     * 生成通知声音
+     */
+    generateNotificationSound() {
+        const notification = this.sound.get('notification');
+        if (!notification) return;
+        
+        // 使用Web Audio API生成通知音效
+        const context = this.sound.context;
+        const buffer = context.createBuffer(1, context.sampleRate * 0.4, context.sampleRate);
+        const data = buffer.getChannelData(0);
+        
+        // 生成通知音效
+        for (let i = 0; i < buffer.length; i++) {
+            const t = i / buffer.length;
+            const phase = i / buffer.length * 5;
+            const f = phase < 0.5 ? 440 : 880;  // 两段音调
+            data[i] = Math.sin(i * f * Math.PI * 2 / context.sampleRate) * (1 - t * 0.6);
+        }
+        
+        // 替换原始音效
+        notification.source.buffer = buffer;
+    }
+    
+    /**
+     * 生成升级音效
+     */
+    generateLevelUpSound() {
+        const levelUp = this.sound.get('levelUp');
+        if (!levelUp) return;
+        
+        // 使用Web Audio API生成升级音效
+        const context = this.sound.context;
+        const buffer = context.createBuffer(1, context.sampleRate * 0.6, context.sampleRate);
+        const data = buffer.getChannelData(0);
+        
+        // 生成升级音效
+        for (let i = 0; i < buffer.length; i++) {
+            const t = i / buffer.length;
+            const sequence = Math.floor(t * 4);  // 4个音符序列
+            
+            let f;
+            switch (sequence) {
+                case 0: f = 440; break;
+                case 1: f = 554; break;
+                case 2: f = 659; break;
+                case 3: f = 880; break;
+                default: f = 440;
+            }
+            
+            data[i] = Math.sin(i * f * Math.PI * 2 / context.sampleRate) * 
+                      (1 - Math.abs(t * 4 - Math.floor(t * 4) - 0.5) * 0.5);
+        }
+        
+        // 替换原始音效
+        levelUp.source.buffer = buffer;
     }
     
     /**

@@ -52,28 +52,40 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
             this.setVelocityX(0);
         }
         
-        // 跳跃逻辑
-        const canJump = this.body.touching.down || this.jumpCount < this.maxJumps;
-        if ((cursors.up.isDown || jumpKey.isDown) && canJump) {
+        // 处理上下移动（仅当玩家处于能力增强状态时）
+        if (this.powerupActive) {
+            if (cursors.up.isDown) {
+                this.setVelocityY(-currentSpeed);
+            } else if (cursors.down.isDown) {
+                this.setVelocityY(currentSpeed);
+            } else {
+                // 停止垂直移动
+                this.setVelocityY(0);
+            }
+        } else {
+            // 正常跳跃逻辑（非能力增强状态）
+            const canJump = this.body.touching.down || this.jumpCount < this.maxJumps;
+            if ((cursors.up.isDown || jumpKey.isDown) && canJump) {
+                if (this.body.touching.down) {
+                    this.jumpCount = 0; // 重置跳跃计数
+                }
+                
+                // 根据状态调整跳跃力度
+                let jumpForce = this.jumpForce;
+                if (this.powerupActive) {
+                    jumpForce *= 1.2; // 能力增强时跳跃更高
+                } else if (this.inFocusMode) {
+                    jumpForce *= 0.7; // 专注模式跳跃更低
+                }
+                
+                this.setVelocityY(jumpForce);
+                this.jumpCount++;
+            }
+            
+            // 如果玩家在地面上，重置跳跃计数
             if (this.body.touching.down) {
-                this.jumpCount = 0; // 重置跳跃计数
+                this.jumpCount = 0;
             }
-            
-            // 根据状态调整跳跃力度
-            let jumpForce = this.jumpForce;
-            if (this.powerupActive) {
-                jumpForce *= 1.2; // 能力增强时跳跃更高
-            } else if (this.inFocusMode) {
-                jumpForce *= 0.7; // 专注模式跳跃更低
-            }
-            
-            this.setVelocityY(jumpForce);
-            this.jumpCount++;
-        }
-        
-        // 如果玩家在地面上，重置跳跃计数
-        if (this.body.touching.down) {
-            this.jumpCount = 0;
         }
         
         // 水平边界检查（防止离开屏幕）
@@ -123,8 +135,12 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
         // 禁用重力
         this.body.allowGravity = false;
         
-        // 添加发光粒子效果
-        this.emitter = scene.add.particles(0, 0, 'collectible', {
+        // 清理之前可能存在的粒子系统
+        this.cleanupParticleEffects();
+        
+        // 创建新的粒子系统
+        this.particles = scene.add.particles('collectible');
+        this.emitter = this.particles.createEmitter({
             lifespan: 200,
             speed: { min: 50, max: 100 },
             scale: { start: 0.4, end: 0 },
@@ -182,12 +198,8 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
         // 重新启用重力
         this.body.allowGravity = true;
         
-        // 停止粒子效果
-        if (this.emitter) {
-            this.emitter.stop();
-            this.emitter.destroy();
-            this.emitter = null;
-        }
+        // 清理粒子效果
+        this.cleanupParticleEffects();
         
         // 移除状态文字
         if (this.stateText) {
@@ -245,6 +257,23 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
         if (this.stateText) {
             this.stateText.destroy();
             this.stateText = null;
+        }
+    }
+    
+    /**
+     * 清理粒子效果
+     */
+    cleanupParticleEffects() {
+        if (this.emitter) {
+            this.emitter.stop();
+            if (this.emitter.manager) {
+                this.emitter.manager.destroy();
+            }
+            this.emitter = null;
+        }
+        if (this.particles) {
+            this.particles.destroy();
+            this.particles = null;
         }
     }
 }

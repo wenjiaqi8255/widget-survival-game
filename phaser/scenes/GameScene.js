@@ -17,6 +17,7 @@ export default class GameScene extends Phaser.Scene {
         this.score = 0;
         this.level = 1;
         this.scrollSpeed = 40; // 相机每帧下移的像素数
+        this.defaultScrollSpeed = 40; // 默认滚动速度
         this.gameOver = false;
         this.lastPlatformY = 0;
         
@@ -26,6 +27,10 @@ export default class GameScene extends Phaser.Scene {
         
         // 当前相机位置追踪
         this.cameraScrollY = 0;
+        
+        // 屏幕滚动控制
+        this.scrollingPaused = false;
+        this.scrollSpeedMultiplier = 1;
     }
 
     create() {
@@ -55,13 +60,18 @@ export default class GameScene extends Phaser.Scene {
         
         // 设置游戏事件
         this.setupEvents();
+        
+        // 创建音效
+        this.createSounds();
     }
 
     update(time, delta) {
         if (this.gameOver) return;
         
-        // 持续向下滚动整个世界
-        this.scrollWorld(delta);
+        // 持续向下滚动整个世界（除非暂停）
+        if (!this.scrollingPaused) {
+            this.scrollWorld(delta);
+        }
         
         // 生成新的平台、收集物和障碍物
         this.generateGameElements();
@@ -82,6 +92,9 @@ export default class GameScene extends Phaser.Scene {
         
         // 更新移动平台
         this.updatePlatforms(delta);
+        
+        // 更新障碍物
+        this.updateObstacles();
         
         // 检查玩家是否掉出屏幕
         this.checkPlayerBounds();
@@ -116,6 +129,17 @@ export default class GameScene extends Phaser.Scene {
         
         // 创建障碍物组
         this.obstacles = this.physics.add.staticGroup();
+    }
+    
+    createSounds() {
+        // 创建游戏音效
+        this.sounds = {
+            collect: this.sound.add('collect', { volume: 0.5 }),
+            powerup: this.sound.add('powerup', { volume: 0.6 }),
+            hit: this.sound.add('hit', { volume: 0.5 }),
+            notification: this.sound.add('notification', { volume: 0.4 }),
+            levelUp: this.sound.add('levelUp', { volume: 0.7 })
+        };
     }
 
     setupCamera() {
@@ -152,6 +176,15 @@ export default class GameScene extends Phaser.Scene {
             stroke: '#000000',
             strokeThickness: 4
         }).setOrigin(1, 0).setScrollFactor(0); // 固定在相机上
+        
+        // 创建状态指示器
+        this.statusText = this.add.text(this.cameras.main.width / 2, 20, '', {
+            fontFamily: 'Arial',
+            fontSize: '20px',
+            color: '#FFFF00',
+            stroke: '#000000',
+            strokeThickness: 4
+        }).setOrigin(0.5, 0).setScrollFactor(0).setAlpha(0);
     }
 
     setupCollisions() {
@@ -179,7 +212,7 @@ export default class GameScene extends Phaser.Scene {
         // 使用相机系统滚动，而非手动移动元素
         if (!this.gameOver) {
             // 根据delta计算当前帧相机应该滚动的距离
-            const scrollAmount = this.scrollSpeed * (delta / 1000);
+            const scrollAmount = this.scrollSpeed * this.scrollSpeedMultiplier * (delta / 1000);
             
             // 更新相机位置 - 向下滚动
             this.cameras.main.scrollY += scrollAmount;
@@ -204,18 +237,41 @@ export default class GameScene extends Phaser.Scene {
         
         // 收集物生成：每2秒最多一个，在屏幕底部下方生成
         if (!this.lastCollectibleTime || currentTime - this.lastCollectibleTime > 2000) {
-            if (Phaser.Math.Between(1, 100) <= 20) {
+            // 根据当前层级调整生成概率
+            const collectibleChance = 20 + Math.min(this.level * 2, 20); // 随层级增加生成几率，最高40%
+            
+            if (Phaser.Math.Between(1, 100) <= collectibleChance) {
                 const y = cameraBottom + Phaser.Math.Between(50, 200);
-                this.generateCollectible(y);
+                
+                // 随机确定收集物类型，20%几率生成通知声音收集物
+                const collectibleType = Phaser.Math.Between(1, 100) <= 20 ? 'sound' : 'color';
+                
+                this.generateCollectible(y, collectibleType);
                 this.lastCollectibleTime = currentTime;
             }
         }
         
         // 障碍物生成：每3秒最多一个，在屏幕底部下方生成
         if (!this.lastObstacleTime || currentTime - this.lastObstacleTime > 3000) {
-            if (Phaser.Math.Between(1, 100) <= 15) {
+            // 根据当前层级调整生成概率
+            const obstacleChance = 15 + Math.min(this.level * 3, 30); // 随层级增加生成几率，最高45%
+            
+            if (Phaser.Math.Between(1, 100) <= obstacleChance) {
                 const y = cameraBottom + Phaser.Math.Between(100, 200);
-                this.generateObstacle(y);
+                
+                // 根据当前层级和随机性确定障碍物类型
+                let obstacleType;
+                const typeRoll = Phaser.Math.Between(1, 100);
+                
+                if (typeRoll <= 40) {
+                    obstacleType = 'adblock'; // 40%几率生成Ad Blocker
+                } else if (typeRoll <= 70) {
+                    obstacleType = 'focusmode'; // 30%几率生成专注模式
+                } else {
+                    obstacleType = 'battery'; // 30%几率生成电池警告
+                }
+                
+                this.generateObstacle(y, obstacleType);
                 this.lastObstacleTime = currentTime;
             }
         }
@@ -231,6 +287,13 @@ export default class GameScene extends Phaser.Scene {
             if (platform.isMoving) {
                 platform.update(delta, minX, maxX);
             }
+        });
+    }
+    
+    updateObstacles() {
+        // 更新所有障碍物
+        this.obstacles.getChildren().forEach(obstacle => {
+            obstacle.update();
         });
     }
 
@@ -289,8 +352,9 @@ export default class GameScene extends Phaser.Scene {
         // 随机X位置
         const x = Phaser.Math.Between(50, this.cameras.main.width - 50);
         
-        // 5%的几率生成移动平台
-        const isMoving = Phaser.Math.Between(1, 100) <= 5;
+        // 随着层级提高，增加移动平台的几率
+        const movingChance = 5 + Math.min(this.level, 20); // 最高25%
+        const isMoving = Phaser.Math.Between(1, 100) <= movingChance;
         
         // 创建平台实例
         const platform = new Platform(this, x, y, isMoving);
@@ -303,12 +367,12 @@ export default class GameScene extends Phaser.Scene {
         return platform;
     }
 
-    generateCollectible(y) {
+    generateCollectible(y, type = 'color') {
         // 随机X位置
         const x = Phaser.Math.Between(20, this.cameras.main.width - 20);
         
         // 创建收集物实例
-        const collectible = new Collectible(this, x, y);
+        const collectible = new Collectible(this, x, y, type);
         // 使用物理静态组的正确添加方法
         this.collectibles.add(collectible);
         // 刷新静态组的物理边界
@@ -317,12 +381,12 @@ export default class GameScene extends Phaser.Scene {
         return collectible;
     }
 
-    generateObstacle(y) {
+    generateObstacle(y, type = 'adblock') {
         // 随机X位置
         const x = Phaser.Math.Between(20, this.cameras.main.width - 20);
         
         // 创建障碍物实例
-        const obstacle = new Obstacle(this, x, y);
+        const obstacle = new Obstacle(this, x, y, type);
         // 使用物理静态组的正确添加方法
         this.obstacles.add(obstacle);
         // 刷新静态组的物理边界
@@ -340,36 +404,35 @@ export default class GameScene extends Phaser.Scene {
     }
 
     collectItem(player, collectible) {
-        // 收集物效果
-        collectible.destroy();
+        // 调用收集物的效果
+        collectible.applyEffect(player, this);
         
         // 增加分数
-        this.score += 10;
-        this.scoreText.setText(`分数: ${this.score}`);
+        this.addScore(10);
         
-        // 10%的几率激活能力增强
-        if (Phaser.Math.Between(1, 100) <= 10) {
-            this.player.activatePowerup(this);
+        // 播放音效
+        if (collectible.type === 'color') {
+            this.sounds.collect.play();
+        } else if (collectible.type === 'sound') {
+            this.sounds.notification.play();
         }
     }
 
     hitObstacle(player, obstacle) {
-        // 如果玩家处于能力增强状态，销毁障碍物
-        if (this.player.powerupActive) {
-            obstacle.destroy();
-            this.score += 5;
-            this.scoreText.setText(`分数: ${this.score}`);
-        } else {
-            // 否则游戏结束
-            this.gameOver = true;
-            this.showGameOver();
+        // 调用障碍物的效果
+        obstacle.applyEffect(player, this);
+        
+        // 播放音效
+        if (obstacle.type === 'adblock' && !player.powerupActive) {
+            this.sounds.hit.play();
         }
     }
 
     increaseDifficulty() {
         // 随着时间推移增加难度 - 但限制最大速度
-        if (this.scrollSpeed < 5) {
+        if (this.scrollSpeed < 80) {
             this.scrollSpeed += 0.1;
+            this.defaultScrollSpeed = this.scrollSpeed;
         }
     }
 
@@ -383,12 +446,101 @@ export default class GameScene extends Phaser.Scene {
             this.levelText.setText(`层级: ${this.level}`);
             
             // 给予层级奖励
-            this.score += 50;
-            this.scoreText.setText(`分数: ${this.score}`);
+            this.addScore(50);
+            
+            // 播放层级提升音效
+            this.sounds.levelUp.play();
+            
+            // 显示层级提示
+            this.showStatus(`进入层级 ${this.level}!`, 0xFFFF00);
             
             // 增加难度
             this.scrollSpeed += 0.5;
+            this.defaultScrollSpeed = this.scrollSpeed;
         }
+    }
+    
+    /**
+     * 暂停屏幕滚动
+     * @param {number} duration - 暂停持续时间(毫秒)
+     */
+    pauseScrolling(duration = 1000) {
+        if (this.scrollPauseTimer) {
+            this.scrollPauseTimer.remove();
+        }
+        
+        // 立即暂停
+        this.scrollingPaused = true;
+        
+        // 显示状态提示
+        this.showStatus('屏幕已暂停!', 0x00FFFF);
+        
+        // 设置计时器恢复滚动
+        this.scrollPauseTimer = this.time.delayedCall(duration, () => {
+            this.scrollingPaused = false;
+            this.hideStatus();
+        });
+    }
+    
+    /**
+     * 增加屏幕滚动速度
+     * @param {number} multiplier - 速度倍数
+     * @param {number} duration - 持续时间(毫秒)
+     */
+    increaseScrollSpeed(multiplier = 1.5, duration = 5000) {
+        if (this.scrollSpeedTimer) {
+            this.scrollSpeedTimer.remove();
+        }
+        
+        // 设置滚动速度倍数
+        this.scrollSpeedMultiplier = multiplier;
+        
+        // 显示状态提示
+        this.showStatus('滚动加速!', 0xFFAA00);
+        
+        // 设置计时器恢复正常速度
+        this.scrollSpeedTimer = this.time.delayedCall(duration, () => {
+            this.scrollSpeedMultiplier = 1;
+            this.hideStatus();
+        });
+    }
+    
+    /**
+     * 显示状态提示
+     * @param {string} message - 提示消息
+     * @param {number} color - 颜色(十六进制)
+     */
+    showStatus(message, color = 0xFFFFFF) {
+        this.statusText.setText(message);
+        this.statusText.setColor('#' + color.toString(16).padStart(6, '0'));
+        
+        // 淡入效果
+        this.tweens.add({
+            targets: this.statusText,
+            alpha: 1,
+            duration: 200
+        });
+    }
+    
+    /**
+     * 隐藏状态提示
+     */
+    hideStatus() {
+        // 淡出效果
+        this.tweens.add({
+            targets: this.statusText,
+            alpha: 0,
+            duration: 200
+        });
+    }
+    
+    /**
+     * 增加分数
+     * @param {number} points - 要增加的分数点数
+     */
+    addScore(points) {
+        this.score += points;
+        this.scoreText.setText(`分数: ${this.score}`);
     }
 
     showGameOver() {
@@ -413,8 +565,17 @@ export default class GameScene extends Phaser.Scene {
             strokeThickness: 4
         }).setOrigin(0.5).setScrollFactor(0);
         
+        // 显示到达的层级
+        const levelText = this.add.text(this.cameras.main.width / 2, this.cameras.main.height / 2 + 50, `到达层级: ${this.level}`, {
+            fontFamily: 'Arial',
+            fontSize: '24px',
+            color: '#ffffff',
+            stroke: '#000000',
+            strokeThickness: 4
+        }).setOrigin(0.5).setScrollFactor(0);
+        
         // 添加重新开始按钮
-        const restartButton = this.add.text(this.cameras.main.width / 2, this.cameras.main.height / 2 + 80, '重新开始', {
+        const restartButton = this.add.text(this.cameras.main.width / 2, this.cameras.main.height / 2 + 120, '重新开始', {
             fontFamily: 'Arial',
             fontSize: '24px',
             color: '#ffffff',

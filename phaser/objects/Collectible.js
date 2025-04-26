@@ -79,28 +79,14 @@ export default class Collectible extends Phaser.Physics.Arcade.Sprite {
      * @param {GameScene} gameScene - 游戏场景
      */
     clearObstacles(gameScene) {
-        // 获取当前相机视图范围
-        const cameraView = {
-            top: gameScene.cameras.main.scrollY,
-            bottom: gameScene.cameras.main.scrollY + gameScene.cameras.main.height
-        };
-        
-        // 清除视野中的所有障碍物
-        gameScene.obstacles.getChildren().forEach(obstacle => {
-            if (obstacle.y >= cameraView.top && obstacle.y <= cameraView.bottom) {
-                // 添加消失动画
-                gameScene.tweens.add({
-                    targets: obstacle,
-                    alpha: 0,
-                    scale: 0.2,
-                    duration: 300,
-                    onComplete: () => obstacle.destroy()
-                });
-            }
-        });
+        // 移除自动清除障碍物的逻辑
+        // 让障碍物在玩家碰到时才被销毁
         
         // 额外增加一些分数
         gameScene.addScore(15);
+        
+        // 显示提示文本
+        gameScene.showStatus('无敌状态！碰撞障碍物可摧毁它们', 0xFFD700);
     }
     
     /**
