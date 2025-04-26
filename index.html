@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>注意力游戏</title>
+    <link rel="icon" href="favicon.ico">
+    <!-- 引入CSS样式文件 -->
+    <link rel="stylesheet" href="styles/main.css">
+    <link rel="stylesheet" href="styles/animations.css">
+    <link rel="stylesheet" href="styles/game-elements.css">
+    <link rel="stylesheet" href="styles/ui.css">
+    <style>
+        .version-switch {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #2196F3;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            text-decoration: none;
+            font-weight: bold;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.2);
+            transition: all 0.3s;
+        }
+        
+        .version-switch:hover {
+            background-color: #1E88E5;
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <a href="phaser/index.html" class="version-switch">Phaser版本 &rarr;</a>
+    
+    <div id="game-container">
+        <div id="scroll-area">
+            <!-- 游戏元素将由JavaScript动态创建 -->
+        </div>
+        
+        <div id="player">注意力</div>
+        <div id="attention-zone"></div>
+        
+        <div class="score-display">分数: 0</div>
+        <div class="layer-indicator">层级: 1</div>
+        
+        <div id="start-screen">
+            <h1>注意力游戏</h1>
+            <p id="instructions">
+                在充满干扰的世界中保持专注，收集彩色方块和声音提醒，提高你的注意力得分。
+                <br><br>
+                控制：<br>
+                - 方向键左右移动<br>
+                - 空格键或上方向键跳跃<br>
+                - 点击并拖动角色移动<br>
+                - 在游戏区域双击可跳跃
+            </p>
+            <button id="start-btn">开始游戏</button>
+        </div>
+        
+        <div id="game-over">
+            <h1>游戏结束</h1>
+            <p>最终分数: <span id="final-score">0</span></p>
+            <p>最大深度: <span id="max-depth">0</span></p>
+            <button id="restart-btn">重新开始</button>
+        </div>
+    </div>
+    
+    <!-- 引入JavaScript模块 -->
+    <!-- 首先加载基础模块 -->
+    <script src="js/physics.js"></script>
+    <script src="js/camera.js"></script>
+    <script src="js/player.js"></script>
+    <script src="js/world.js"></script>
+    <script src="js/ui.js"></script>
+    <!-- 然后加载依赖基础模块的其他模块 -->
+    <script src="js/platforms.js"></script>
+    <script src="js/collectibles.js"></script>
+    <script src="js/obstacles.js"></script>
+    <script src="js/input.js"></script>
+    <!-- 最后加载游戏主控制模块 -->
+    <script src="js/game.js"></script>
+</body>
+</html>
