@@ -87,6 +87,8 @@ export default class Collectible extends Phaser.Physics.Arcade.Sprite {
         
         // 显示提示文本
         gameScene.showStatus('无敌状态！碰撞障碍物可摧毁它们', 0xFFD700);
+        
+        // 注意：无敌状态结束时，Player.deactivatePowerup()方法会调用hideStatus()
     }
     
     /**

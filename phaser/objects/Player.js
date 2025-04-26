@@ -206,6 +206,11 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
             this.stateText.destroy();
             this.stateText = null;
         }
+        
+        // 隐藏GameScene中的状态提示文本
+        if (this.scene && typeof this.scene.hideStatus === 'function') {
+            this.scene.hideStatus();
+        }
     }
     
     /**
