@@ -22,8 +22,12 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
         this.jumpCount = 0;
         this.maxJumps = 1; // 单段跳
         
-        // 能力增强状态
-        this.powerupActive = false;
+        // 玩家状态
+        this.powerupActive = false; // 能力增强状态
+        this.inFocusMode = false;   // 专注模式状态
+        this.normalSpeed = 250;     // 正常移动速度
+        this.focusSpeed = 120;      // 专注模式移动速度
+        this.powerupSpeed = 350;    // 能力增强移动速度
         
         // 确保玩家不会被屏幕滚动推动
         this.body.allowGravity = true;
@@ -35,11 +39,14 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
      * @param {Phaser.Input.Keyboard.Key} jumpKey - 跳跃键
      */
     update(cursors, jumpKey) {
+        // 计算当前移动速度
+        const currentSpeed = this.getCurrentSpeed();
+        
         // 左右移动
         if (cursors.left.isDown) {
-            this.setVelocityX(-250);
+            this.setVelocityX(-currentSpeed);
         } else if (cursors.right.isDown) {
-            this.setVelocityX(250);
+            this.setVelocityX(currentSpeed);
         } else {
             // 停止水平移动
             this.setVelocityX(0);
@@ -52,7 +59,15 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
                 this.jumpCount = 0; // 重置跳跃计数
             }
             
-            this.setVelocityY(this.jumpForce);
+            // 根据状态调整跳跃力度
+            let jumpForce = this.jumpForce;
+            if (this.powerupActive) {
+                jumpForce *= 1.2; // 能力增强时跳跃更高
+            } else if (this.inFocusMode) {
+                jumpForce *= 0.7; // 专注模式跳跃更低
+            }
+            
+            this.setVelocityY(jumpForce);
             this.jumpCount++;
         }
         
@@ -72,24 +87,164 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
             this.x = worldWidth - halfWidth;
             this.body.velocity.x = 0;
         }
+        
+        // 更新能力增强状态的视觉效果
+        if (this.powerupActive) {
+            this.updatePowerupVisuals();
+        }
+    }
+    
+    /**
+     * 根据当前状态获取移动速度
+     * @returns {number} 当前移动速度
+     */
+    getCurrentSpeed() {
+        if (this.powerupActive) {
+            return this.powerupSpeed;
+        } else if (this.inFocusMode) {
+            return this.focusSpeed;
+        } else {
+            return this.normalSpeed;
+        }
     }
     
     /**
      * 激活能力增强状态
      * @param {Phaser.Scene} scene - 当前场景
+     * @param {number} duration - 持续时间(毫秒)，默认3000
      */
-    activatePowerup(scene) {
+    activatePowerup(scene, duration = 3000) {
         this.powerupActive = true;
         
         // 视觉效果：玩家变大并改变颜色
         this.setTint(0xFFD700); // 金色
         this.setScale(1.5);
         
-        // 3秒后结束增强状态
-        scene.time.delayedCall(3000, () => {
-            this.powerupActive = false;
-            this.clearTint();
-            this.setScale(1);
+        // 禁用重力
+        this.body.allowGravity = false;
+        
+        // 添加发光粒子效果
+        this.emitter = scene.add.particles(0, 0, 'collectible', {
+            lifespan: 200,
+            speed: { min: 50, max: 100 },
+            scale: { start: 0.4, end: 0 },
+            quantity: 1,
+            blendMode: 'ADD',
+            emitZone: {
+                type: 'edge',
+                source: new Phaser.Geom.Rectangle(-this.width/2, -this.height/2, this.width, this.height),
+                quantity: 12
+            }
         });
+        this.emitter.startFollow(this);
+        
+        // 如果有现有的timer，先清除
+        if (this.powerupTimer) {
+            this.powerupTimer.remove();
+        }
+        
+        // 设置持续时间
+        this.powerupTimer = scene.time.delayedCall(duration, () => {
+            this.deactivatePowerup();
+        });
+        
+        // 添加状态文字
+        if (this.stateText) this.stateText.destroy();
+        this.stateText = scene.add.text(this.x, this.y - 40, '无敌!', {
+            fontSize: '16px',
+            fontFamily: 'Arial',
+            color: '#FFD700',
+            stroke: '#000',
+            strokeThickness: 3
+        }).setOrigin(0.5);
+    }
+    
+    /**
+     * 更新能力增强状态的视觉效果
+     */
+    updatePowerupVisuals() {
+        // 更新状态文字位置
+        if (this.stateText) {
+            this.stateText.setPosition(this.x, this.y - 40);
+        }
+    }
+    
+    /**
+     * 停用能力增强状态
+     */
+    deactivatePowerup() {
+        this.powerupActive = false;
+        
+        // 恢复外观
+        this.clearTint();
+        this.setScale(1);
+        
+        // 重新启用重力
+        this.body.allowGravity = true;
+        
+        // 停止粒子效果
+        if (this.emitter) {
+            this.emitter.stop();
+            this.emitter.destroy();
+            this.emitter = null;
+        }
+        
+        // 移除状态文字
+        if (this.stateText) {
+            this.stateText.destroy();
+            this.stateText = null;
+        }
+    }
+    
+    /**
+     * 进入专注模式
+     * @param {Phaser.Scene} scene - 当前场景
+     * @param {number} duration - 持续时间(毫秒)，默认5000
+     */
+    enterFocusMode(scene, duration = 5000) {
+        this.inFocusMode = true;
+        
+        // 视觉效果：玩家变暗/变灰
+        this.setTint(0x666666);
+        
+        // 添加减速视觉效果
+        this.setAlpha(0.7);
+        
+        // 如果有现有的timer，先清除
+        if (this.focusModeTimer) {
+            this.focusModeTimer.remove();
+        }
+        
+        // 设置持续时间
+        this.focusModeTimer = scene.time.delayedCall(duration, () => {
+            this.exitFocusMode();
+        });
+        
+        // 添加状态文字
+        if (this.stateText) this.stateText.destroy();
+        this.stateText = scene.add.text(this.x, this.y - 40, '减速!', {
+            fontSize: '16px',
+            fontFamily: 'Arial',
+            color: '#AAAAAA',
+            stroke: '#000',
+            strokeThickness: 3
+        }).setOrigin(0.5);
+    }
+    
+    /**
+     * 退出专注模式
+     */
+    exitFocusMode() {
+        this.inFocusMode = false;
+        
+        // 恢复外观
+        this.clearTint();
+        this.setAlpha(1);
+        
+        // 移除状态文字
+        if (this.stateText) {
+            this.stateText.destroy();
+            this.stateText = null;
+        }
     }
 }

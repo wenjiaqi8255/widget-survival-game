@@ -13,9 +13,9 @@ export default class MenuScene extends Phaser.Scene {
             .setOrigin(0, 0);
             
         // 添加游戏标题
-        this.add.text(this.cameras.main.width / 2, 150, '注意力', {
+        this.add.text(this.cameras.main.width / 2, 150, 'Attention Game', {
             fontFamily: 'Arial',
-            fontSize: '48px',
+            fontSize: '36px',
             fontStyle: 'bold',
             color: '#ffffff',
             stroke: '#000000',
