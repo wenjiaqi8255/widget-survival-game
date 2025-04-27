@@ -6,6 +6,7 @@ import Player from '../objects/Player.js';
 import Platform from '../objects/Platform.js';
 import Collectible from '../objects/Collectible.js';
 import Obstacle from '../objects/Obstacle.js';
+import InputManager from '../input/InputManager.js';
 
 export default class GameScene extends Phaser.Scene {
     constructor() {
@@ -67,6 +68,34 @@ export default class GameScene extends Phaser.Scene {
 
     update(time, delta) {
         if (this.gameOver) return;
+        
+        // 获取输入管理器的输入状态
+        const inputs = this.inputManager.update();
+        
+        // 为游戏中的键盘输入控制器模拟键盘输入状态
+        if (inputs.left) {
+            this.cursors.left.isDown = true;
+        } else {
+            this.cursors.left.isDown = false;
+        }
+        
+        if (inputs.right) {
+            this.cursors.right.isDown = true;
+        } else {
+            this.cursors.right.isDown = false;
+        }
+        
+        if (inputs.up) {
+            this.cursors.up.isDown = true;
+        } else {
+            this.cursors.up.isDown = false;
+        }
+        
+        if (inputs.action) {
+            this.jumpKey.isDown = true;
+        } else {
+            this.jumpKey.isDown = false;
+        }
         
         // 持续向下滚动整个世界（除非暂停）
         if (!this.scrollingPaused) {
@@ -156,6 +185,28 @@ export default class GameScene extends Phaser.Scene {
         
         // 添加跳跃按键 (空格键)
         this.jumpKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+        
+        // 初始化输入管理器
+        this.inputManager = new InputManager();
+        this.inputManager.initialize();
+        
+        // 加载触摸控制器样式
+        this._loadTouchControlsStyle();
+    }
+    
+    _loadTouchControlsStyle() {
+        // 确保已经加载了触摸控制样式
+        const styleSheets = Array.from(document.styleSheets);
+        const touchControlsStyleLoaded = styleSheets.some(sheet => 
+            sheet.href && sheet.href.includes('touch-controls.css')
+        );
+        
+        if (!touchControlsStyleLoaded) {
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = 'styles/touch-controls.css';
+            document.head.appendChild(link);
+        }
     }
 
     createUI() {

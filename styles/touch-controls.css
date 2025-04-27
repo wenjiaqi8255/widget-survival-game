@@ -1,0 +1,83 @@
+.touch-controls {
+  position: fixed;
+  bottom: 20px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  padding: 0 20px;
+  z-index: 1000;
+  pointer-events: none; /* 允许穿透点击 */
+}
+
+.dpad {
+  width: 150px;
+  height: 150px;
+  position: relative;
+  pointer-events: auto;
+}
+
+.dpad button {
+  width: 50px;
+  height: 50px;
+  border-radius: 25px;
+  background-color: rgba(255, 255, 255, 0.3);
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  position: absolute;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.dpad .btn-up {
+  top: 0;
+  left: 50px;
+}
+
+.dpad .btn-down {
+  bottom: 0;
+  left: 50px;
+}
+
+.dpad .btn-left {
+  left: 0;
+  top: 50px;
+}
+
+.dpad .btn-right {
+  right: 0;
+  top: 50px;
+}
+
+.btn-action {
+  width: 80px;
+  height: 80px;
+  border-radius: 40px;
+  background-color: rgba(255, 100, 100, 0.4);
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  pointer-events: auto;
+}
+
+/* 按下状态 */
+.dpad button:active, .btn-action:active {
+  transform: scale(0.95);
+  background-color: rgba(255, 255, 255, 0.5);
+}
+
+/* 媒体查询以支持不同屏幕尺寸 */
+@media (max-width: 768px) {
+  .dpad {
+    width: 120px;
+    height: 120px;
+  }
+  
+  .dpad button {
+    width: 40px;
+    height: 40px;
+  }
+  
+  .btn-action {
+    width: 60px;
+    height: 60px;
+  }
+}
