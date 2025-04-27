@@ -1,5 +1,5 @@
-import KeyboardInputController from './KeyboardInputController';
-import TouchInputController from './TouchInputController';
+import KeyboardInputController from './KeyboardInputController.js';
+import TouchInputController from './TouchInputController.js';
 
 class InputManager {
   constructor() {
