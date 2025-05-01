@@ -7,6 +7,7 @@ import Platform from '../objects/Platform.js';
 import Collectible from '../objects/Collectible.js';
 import Obstacle from '../objects/Obstacle.js';
 import InputManager from '../input/InputManager.js';
+import AlignmentSystem from '../utils/AlignmentSystem.js';
 
 export default class GameScene extends Phaser.Scene {
     constructor() {
@@ -55,6 +56,9 @@ export default class GameScene extends Phaser.Scene {
         
         // 创建UI
         this.createUI();
+        
+        // 创建路线系统
+        this.createAlignmentSystem();
         
         // 设置碰撞检测
         this.setupCollisions();
@@ -461,6 +465,17 @@ export default class GameScene extends Phaser.Scene {
         // 增加分数
         this.addScore(10);
         
+        // 根据收集物类型更新路线系统
+        if (collectible.type === 'color') {
+            // 颜色收集物倾向于守序路线
+            this.alignmentSystem.recordOrderlyAction(10);
+            this.showStatus('守序路线得分 +10', 0x3498db);
+        } else if (collectible.type === 'sound') {
+            // 声音收集物倾向于混乱路线
+            this.alignmentSystem.recordChaoticAction(10);
+            this.showStatus('混乱路线得分 +10', 0xe74c3c);
+        }
+        
         // 播放音效
         if (collectible.type === 'color') {
             this.sounds.collect.play();
@@ -472,6 +487,21 @@ export default class GameScene extends Phaser.Scene {
     hitObstacle(player, obstacle) {
         // 调用障碍物的效果
         obstacle.applyEffect(player, this);
+        
+        // 根据障碍物类型和玩家行为更新路线系统
+        if (obstacle.type === 'adblock' && player.powerupActive) {
+            // 用能力增强清除广告拦截器是混乱行为
+            this.alignmentSystem.recordChaoticAction(5);
+            this.showStatus('混乱路线得分 +5', 0xe74c3c);
+        } else if (obstacle.type === 'focusmode' && player.powerupActive) {
+            // 用能力增强穿越专注模式是混乱行为
+            this.alignmentSystem.recordChaoticAction(5);
+            this.showStatus('混乱路线得分 +5', 0xe74c3c);
+        } else if (obstacle.type === 'focusmode' && !player.powerupActive) {
+            // 进入专注模式自然接受减速是守序行为
+            this.alignmentSystem.recordOrderlyAction(5);
+            this.showStatus('守序路线得分 +5', 0x3498db);
+        }
         
         // 播放音效
         if (obstacle.type === 'adblock' && !player.powerupActive) {
@@ -592,6 +622,23 @@ export default class GameScene extends Phaser.Scene {
     addScore(points) {
         this.score += points;
         this.scoreText.setText(`分数: ${this.score}`);
+        
+        // 路线奖励倍数
+        const alignment = this.alignmentSystem.getDominantAlignment();
+        const streak = this.alignmentSystem.getStreakCount();
+        
+        // 如果有一定的连续路线行为，给予额外分数
+        if (streak >= 3) {
+            const bonusPoints = Math.floor(points * 0.2 * streak);
+            if (bonusPoints > 0) {
+                this.score += bonusPoints;
+                this.scoreText.setText(`分数: ${this.score}`);
+                
+                // 显示连击奖励
+                const color = alignment === 'orderly' ? 0x3498db : 0xe74c3c;
+                this.showStatus(`连击! +${bonusPoints}分`, color);
+            }
+        }
     }
 
     showGameOver() {
@@ -599,7 +646,7 @@ export default class GameScene extends Phaser.Scene {
         this.physics.pause();
         
         // 显示游戏结束文本
-        const gameOverText = this.add.text(this.cameras.main.width / 2, this.cameras.main.height / 2 - 50, '游戏结束', {
+        const gameOverText = this.add.text(this.cameras.main.width / 2, this.cameras.main.height / 2 - 80, '游戏结束', {
             fontFamily: 'Arial',
             fontSize: '48px',
             color: '#ffffff',
@@ -608,7 +655,7 @@ export default class GameScene extends Phaser.Scene {
         }).setOrigin(0.5).setScrollFactor(0);
         
         // 显示最终分数
-        const finalScoreText = this.add.text(this.cameras.main.width / 2, this.cameras.main.height / 2 + 10, `最终分数: ${this.score}`, {
+        const finalScoreText = this.add.text(this.cameras.main.width / 2, this.cameras.main.height / 2 - 20, `最终分数: ${this.score}`, {
             fontFamily: 'Arial',
             fontSize: '24px',
             color: '#ffffff',
@@ -617,7 +664,7 @@ export default class GameScene extends Phaser.Scene {
         }).setOrigin(0.5).setScrollFactor(0);
         
         // 显示到达的层级
-        const levelText = this.add.text(this.cameras.main.width / 2, this.cameras.main.height / 2 + 50, `到达层级: ${this.level}`, {
+        const levelText = this.add.text(this.cameras.main.width / 2, this.cameras.main.height / 2 + 20, `到达层级: ${this.level}`, {
             fontFamily: 'Arial',
             fontSize: '24px',
             color: '#ffffff',
@@ -625,8 +672,28 @@ export default class GameScene extends Phaser.Scene {
             strokeThickness: 4
         }).setOrigin(0.5).setScrollFactor(0);
         
+        // 获取路线分数
+        const alignmentScores = this.alignmentSystem.getScores();
+        
+        // 显示路线分数
+        const orderlyScoreText = this.add.text(this.cameras.main.width / 2, this.cameras.main.height / 2 + 60, `守序分数: ${Math.floor(alignmentScores.orderly)}`, {
+            fontFamily: 'Arial',
+            fontSize: '20px',
+            color: '#3498db',
+            stroke: '#000000',
+            strokeThickness: 3
+        }).setOrigin(0.5).setScrollFactor(0);
+        
+        const chaoticScoreText = this.add.text(this.cameras.main.width / 2, this.cameras.main.height / 2 + 90, `混乱分数: ${Math.floor(alignmentScores.chaotic)}`, {
+            fontFamily: 'Arial',
+            fontSize: '20px',
+            color: '#e74c3c',
+            stroke: '#000000',
+            strokeThickness: 3
+        }).setOrigin(0.5).setScrollFactor(0);
+        
         // 添加重新开始按钮
-        const restartButton = this.add.text(this.cameras.main.width / 2, this.cameras.main.height / 2 + 120, '重新开始', {
+        const restartButton = this.add.text(this.cameras.main.width / 2, this.cameras.main.height / 2 + 160, '重新开始', {
             fontFamily: 'Arial',
             fontSize: '24px',
             color: '#ffffff',
@@ -654,5 +721,13 @@ export default class GameScene extends Phaser.Scene {
         restartButton.on('pointerdown', () => {
             this.scene.restart();
         });
+    }
+    
+    /**
+     * 创建路线系统
+     */
+    createAlignmentSystem() {
+        // 初始化路线系统
+        this.alignmentSystem = new AlignmentSystem(this);
     }
 }
