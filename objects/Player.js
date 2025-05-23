@@ -25,12 +25,18 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
         // 玩家状态
         this.powerupActive = false; // 能力增强状态
         this.inFocusMode = false;   // 专注模式状态
+        this.inNoticeMode = false;  // 显眼模式状态
         this.normalSpeed = 250;     // 正常移动速度
         this.focusSpeed = 120;      // 专注模式移动速度
         this.powerupSpeed = 350;    // 能力增强移动速度
+        this.noticeModeSpeed = 300; // 显眼模式移动速度
         
         // 确保玩家不会被屏幕滚动推动
         this.body.allowGravity = true;
+        
+        // 尾迹效果
+        this.trailTime = 0;
+        this.trailDelay = 30; // 显眼模式下每帧都生成，否则只在快速移动时生成
     }
     
     /**
@@ -63,23 +69,26 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
                 this.setVelocityY(0);
             }
         } else {
-            // 正常跳跃逻辑（非能力增强状态）
-            const canJump = this.body.touching.down || this.jumpCount < this.maxJumps;
+            // 修改：在空中增加下落加速度
+            if (!this.body.touching.down && this.body.velocity.y > 0) {
+                // 下落加速度为重力的1.5倍
+                this.body.velocity.y += 0.5 * this.scene.physics.world.gravity.y * this.scene.sys.game.loop.delta / 1000;
+            }
+            
+            // 修改：只允许在地面上跳跃
+            const canJump = this.body.touching.down;
             if ((cursors.up.isDown || jumpKey.isDown) && canJump) {
-                if (this.body.touching.down) {
-                    this.jumpCount = 0; // 重置跳跃计数
-                }
-                
                 // 根据状态调整跳跃力度
                 let jumpForce = this.jumpForce;
                 if (this.powerupActive) {
                     jumpForce *= 1.2; // 能力增强时跳跃更高
                 } else if (this.inFocusMode) {
                     jumpForce *= 0.7; // 专注模式跳跃更低
+                } else if (this.inNoticeMode) {
+                    jumpForce *= 1.1; // 显眼模式跳跃略高
                 }
                 
                 this.setVelocityY(jumpForce);
-                this.jumpCount++;
             }
             
             // 如果玩家在地面上，重置跳跃计数
@@ -100,9 +109,69 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
             this.body.velocity.x = 0;
         }
         
-        // 更新能力增强状态的视觉效果
+        // 更新状态的视觉效果
         if (this.powerupActive) {
             this.updatePowerupVisuals();
+        }
+        
+        // 生成移动尾迹
+        this.updateTrail();
+    }
+    
+    /**
+     * 更新尾迹效果
+     */
+    updateTrail() {
+        // 获取当前时间
+        const now = this.scene.time.now;
+        
+        // 检查是否应该生成新的尾迹
+        const shouldCreateTrail = this.inNoticeMode || 
+            (Math.abs(this.body.velocity.x) > this.normalSpeed * 0.8) || 
+            (Math.abs(this.body.velocity.y) > Math.abs(this.jumpForce) * 0.5);
+            
+        if (shouldCreateTrail && now > this.trailTime) {
+            // 设置下一个尾迹的时间
+            this.trailTime = now + (this.inNoticeMode ? 30 : 100);
+            
+            // 创建尾迹效果
+            let trailAlpha = 0.4;
+            let trailScale = 0.8;
+            let trailColor = 0xFFFFFF;
+            
+            if (this.powerupActive) {
+                trailColor = 0xFFD700; // 金色
+                trailAlpha = 0.6;
+            } else if (this.inFocusMode) {
+                trailColor = 0x666666; // 灰色
+                trailAlpha = 0.3;
+            } else if (this.inNoticeMode) {
+                // 显眼模式尾迹颜色在红黄之间变化
+                const time = now % 1000 / 1000;
+                const r = 0xff;
+                const g = Math.floor(0x55 + time * 0xaa);
+                trailColor = (r << 16) | (g << 8);
+                trailAlpha = 0.7;
+                trailScale = 1.0;
+            }
+            
+            // 创建尾迹精灵
+            const trail = this.scene.add.sprite(this.x, this.y, 'player')
+                .setAlpha(trailAlpha)
+                .setTint(trailColor)
+                .setScale(this.scale * trailScale)
+                .setDepth(this.depth - 1);
+                
+            // 淡出并销毁尾迹
+            this.scene.tweens.add({
+                targets: trail,
+                alpha: 0,
+                scale: this.scale * trailScale * 0.6,
+                duration: this.inNoticeMode ? 400 : 200,
+                onComplete: () => {
+                    trail.destroy();
+                }
+            });
         }
     }
     
@@ -115,6 +184,8 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
             return this.powerupSpeed;
         } else if (this.inFocusMode) {
             return this.focusSpeed;
+        } else if (this.inNoticeMode) {
+            return this.noticeModeSpeed;
         } else {
             return this.normalSpeed;
         }
@@ -266,7 +337,140 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     }
     
     /**
-     * 清理粒子效果
+     * 进入显眼模式
+     * @param {Phaser.Scene} scene - 当前场景
+     * @param {number} intensity - 强度 (0-1)
+     * @param {number} duration - 持续时间(毫秒)
+     */
+    enterNoticeMode(scene, intensity = 0.5, duration = 5000) {
+        this.inNoticeMode = true;
+        
+        // 保存强度值用于视觉效果
+        this.noticeModeIntensity = intensity;
+        
+        // 调整速度基于强度
+        this.noticeModeSpeed = this.normalSpeed + (intensity * 100); // 250-350
+        
+        // 清除已有计时器
+        if (this.noticeModeTimer) {
+            this.noticeModeTimer.remove();
+        }
+        
+        // 清除已有特效
+        if (this.noticeEffects) {
+            this.cleanupNoticeEffects();
+        }
+        
+        // 创建特效容器
+        this.noticeEffects = {
+            particles: null,
+            emitter: null,
+            colorTween: null
+        };
+        
+        // 强度高于阈值时添加粒子效果
+        if (intensity > 0.3) {
+            this.noticeEffects.particles = scene.add.particles('collectible');
+            this.noticeEffects.emitter = this.noticeEffects.particles.createEmitter({
+                lifespan: 300,
+                speed: { min: 30, max: 100 },
+                scale: { start: 0.2, end: 0 },
+                quantity: Math.floor(intensity * 2) + 1,
+                frequency: 100 - intensity * 80, // 20-100ms
+                blendMode: 'ADD',
+                tint: [0xFF5500, 0xFF0000, 0xFF9900]
+            });
+            this.noticeEffects.emitter.startFollow(this);
+        }
+        
+        // 添加颜色变换效果
+        const colorTween = scene.tweens.addCounter({
+            from: 0,
+            to: 100,
+            duration: 500,
+            repeat: -1,
+            yoyo: true,
+            ease: 'Sine.easeInOut',
+            onUpdate: (tween) => {
+                const value = tween.getValue();
+                const r = 0xff;
+                const g = Math.floor(value * 2.55);
+                const b = 0;
+                const color = (r << 16) | (g << 8) | b;
+                this.setTint(color);
+            }
+        });
+        this.noticeEffects.colorTween = colorTween;
+        
+        // 添加状态文字
+        if (this.stateText) this.stateText.destroy();
+        this.stateText = scene.add.text(this.x, this.y - 40, '显眼!', {
+            fontSize: '16px',
+            fontFamily: 'Arial',
+            color: '#FF5500',
+            stroke: '#000',
+            strokeThickness: 3
+        }).setOrigin(0.5);
+        
+        // 文字闪烁效果
+        scene.tweens.add({
+            targets: this.stateText,
+            alpha: { from: 0.6, to: 1 },
+            scale: { from: 0.9, to: 1.1 },
+            duration: 300,
+            yoyo: true,
+            repeat: -1
+        });
+        
+        // 设置持续时间
+        this.noticeModeTimer = scene.time.delayedCall(duration, () => {
+            this.exitNoticeMode();
+        });
+    }
+    
+    /**
+     * 退出显眼模式
+     */
+    exitNoticeMode() {
+        this.inNoticeMode = false;
+        this.noticeModeIntensity = 0;
+        
+        // 清理特效
+        this.cleanupNoticeEffects();
+        
+        // 恢复外观
+        this.clearTint();
+        
+        // 移除状态文字
+        if (this.stateText) {
+            this.stateText.destroy();
+            this.stateText = null;
+        }
+    }
+    
+    /**
+     * 清理显眼模式特效
+     */
+    cleanupNoticeEffects() {
+        if (!this.noticeEffects) return;
+        
+        if (this.noticeEffects.emitter) {
+            this.noticeEffects.emitter.stop();
+        }
+        
+        if (this.noticeEffects.particles) {
+            this.noticeEffects.particles.destroy();
+        }
+        
+        if (this.noticeEffects.colorTween) {
+            this.noticeEffects.colorTween.stop();
+        }
+        
+        this.noticeEffects = null;
+    }
+    
+    /**
+     * 清理所有特效
      */
     cleanupParticleEffects() {
         if (this.emitter) {
@@ -280,5 +484,8 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
             this.particles.destroy();
             this.particles = null;
         }
+        
+        // 同时清理显眼模式特效
+        this.cleanupNoticeEffects();
     }
 }
